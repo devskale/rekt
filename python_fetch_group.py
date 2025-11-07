@@ -56,7 +56,12 @@ async def main():
 
             sender = "Unknown"
             if msg.sender:
-                sender = msg.sender.first_name or msg.sender.username or "Unknown"
+                sender = (
+                    getattr(msg.sender, "first_name", None)
+                    or getattr(msg.sender, "title", None)
+                    or getattr(msg.sender, "username", None)
+                    or "Unknown"
+                )
 
             print(f"[{msg.date.strftime('%Y-%m-%d %H:%M')}] {sender}: {text}")
 
