@@ -1,6 +1,15 @@
 rekt
 
 
+
+setup:
+python -m venv .venv 
+source .venv/bin/activate
+pip install -r requirements.txt
+
+python python_fetch_group.py
+
+
 reads telegram groups (portfolios)
 
 
