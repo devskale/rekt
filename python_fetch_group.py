@@ -37,13 +37,13 @@ async def main():
         try:
             # Get the group entity
             group = await client.get_entity(GROUP_IDENTIFIER)
-            print(f"Fetching latest 100 messages from: {group.title} (ID: {group.id})")
+            print(f"Fetching latest 20 messages from: {group.title} (ID: {group.id})")
         except Exception as e:
             print(f"Error fetching group: {e}")
             return
 
-        # Fetch last 100 messages (newest first)
-        messages = await client.get_messages(group, limit=100)
+        # Fetch last 20 messages (newest first)
+        messages = await client.get_messages(group, limit=20)
 
         print(f"\n--- Latest {len(messages)} messages ---\n")
         for msg in messages:
