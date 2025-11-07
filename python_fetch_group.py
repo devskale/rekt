@@ -21,7 +21,7 @@ PHONE = os.getenv("PHONE_NUMBER")
 # Replace with your target group
 # Public group: use username without @, e.g., 'durov'
 # Private group: use integer chat ID, e.g., -1001234567890
-GROUP_IDENTIFIER = "defiant1s"  # 👈 CHANGE THIS TO YOUR TEST GROUP
+GROUP_IDENTIFIER = "mad_apes"  # 👈 CHANGE THIS TO YOUR TEST GROUP
 
 client = TelegramClient("test_session", API_ID, API_HASH)
 
