@@ -15,6 +15,12 @@ function envNum(key: string, def: number): number {
   return Number.isFinite(n) ? n : def;
 }
 
+function envBool(key: string, def: boolean): boolean {
+  const v = process.env[key];
+  if (v === undefined || v === "") return def;
+  return /^(1|true|yes|on)$/i.test(v.trim());
+}
+
 /** Parse a comma list or JSON array from env. */
 function envList(key: string, def: string[]): string[] {
   const v = process.env[key];
@@ -49,6 +55,8 @@ export interface ReceiverConfig {
   dataDir: string;
   /** How often to log a stats summary line (ms). */
   statsIntervalMs: number;
+  /** Dual-write captured data to PostgreSQL alongside JSONL. */
+  pgEnabled: boolean;
 }
 
 export const config: ReceiverConfig = {
@@ -58,4 +66,5 @@ export const config: ReceiverConfig = {
   turboLastSeconds: envNum("RECEIVER_TURBO_LAST_SECONDS", 90),
   dataDir: envStr("RECEIVER_DATA_DIR", "./data"),
   statsIntervalMs: envNum("RECEIVER_STATS_INTERVAL_MS", 30000),
+  pgEnabled: envBool("PG_ENABLED", true),
 };
