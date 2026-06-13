@@ -165,7 +165,9 @@ oddsC.data.datasets.push({label:'DOWN',data:[],borderColor:'#f85149',backgroundC
 let firstSpot=null;
 async function go(){
  try{
-  const [o,s,d]=await Promise.all(['/api/overview','/api/spot?minutes=480','/api/odds?minutes=120'].map(u=>fetch(u).then(r=>r.json())));
+  // relative paths so the viewer works both at root (localhost:8080) and
+  // behind a reverse proxy prefix (/rekt/) without clashing with other /api routes
+  const [o,s,d]=await Promise.all(['api/overview','api/spot?minutes=480','api/odds?minutes=120'].map(u=>fetch(u).then(r=>r.json())));
   if(o.spot){$('spotPrice').textContent='$'+Number(o.spot.price).toLocaleString(undefined,{maximumFractionDigits:0});}
   $('cSpot').textContent=Number(o.counts.spot).toLocaleString();
   $('cOdds').textContent=Number(o.counts.odds).toLocaleString();
