@@ -1,6 +1,7 @@
 # Agentic Trading — GitHub Research Notes
 
-> Researched 2026-06-13. Cloned to `./tempis/`. Read alongside `agentictrading.md`.
+> Researched 2026-06-13.
+> (Third-party clones live in `tempis/` and research docs in `transcripts/` — both gitignored, local-only.)
 
 ---
 
