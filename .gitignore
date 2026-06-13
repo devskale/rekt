@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+logs/
+
+# rektDBfiller — DEMO JSONL cache (do not commit captured data)
+data/
+
+# Secrets — never commit Polymarket API creds or keys
+creds/
+*.key
+*.pem
+
+# Third-party research clones (re-clone locally if needed)
+tempis/
+
+# Symlinks that point outside the repo (docs/transcripts live in ../packs)
+agentictrading.md
+agentictrading.prd.md
+transcripts
