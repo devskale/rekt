@@ -81,7 +81,7 @@ function logStats(): void {
       .join(",") || "—";
   const ws = spot.connected ? "yes" : "no";
   const pgStat = pg
-    ? `pgWritten=${pg.totalWritten} pgErrors=${pg.errors} pgConnected=${pg.connected ? "yes" : "no"}`
+    ? `pgWritten=${pg.totalWritten} pgPending=${pg.pending} pgErrors=${pg.errors} pgDropped=${pg.dropped} pgConnected=${pg.connected ? "yes" : "no"}`
     : "pg=off";
   logger.info(
     MODULE,
