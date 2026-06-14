@@ -10,6 +10,7 @@
     "receiver": "tsx src/receiver/index.ts",
     "receiver:demo": "tsx src/receiver/index.ts",
     "sweep": "tsx src/sweeper/index.ts",
+    "backtest": "tsx src/backtest/index.ts",
     "web": "tsx src/web/index.ts"
   },
   "dependencies": {
