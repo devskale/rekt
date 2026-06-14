@@ -96,7 +96,15 @@ async function loadMarkets(args: Args): Promise<ResolvedMarket[]> {
      ORDER BY window_start ASC`,
     [args.asset, Math.floor(args.fromMs / 1000), Math.floor(args.toMs / 1000)],
   );
-  return r.rows;
+  // pg returns BIGINT as strings — coerce to numbers for all downstream use.
+  return r.rows.map((row: Record<string, unknown>) => ({
+    id: String(row.id),
+    slug: String(row.slug),
+    asset: String(row.asset),
+    windowStart: Number(row.window_start),
+    windowEnd: Number(row.window_end),
+    outcome: row.outcome as ResolvedMarket["outcome"],
+  }));
 }
 
 async function loadTicks(market: ResolvedMarket): Promise<Tick[]> {
