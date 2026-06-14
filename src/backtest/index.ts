@@ -104,14 +104,17 @@ async function loadTicks(market: ResolvedMarket): Promise<Tick[]> {
   // as 'active' for ~10 min (as prev/next too), so stc>300 ticks are noise from
   // when this market was the *next* window. Filter them out so strategies see
   // the real 300→0 lifecycle and reach the late/scalp zone.
+  // (The `ts < window_end*1000` filter is redundant given stc<=300 AND would
+  // throw: pg returns bigint window_end as a string, and 'str'*int fails int4mul.)
+  const endMs = Number(market.windowEnd) * 1000;
   const r = await pool.query(
     `SELECT ts, seconds_to_close, up_mid, down_mid, up_best_ask, down_best_ask
      FROM odds_ticks
      WHERE market_id = $1
        AND seconds_to_close > 0 AND seconds_to_close <= 300
-       AND ts < $2 * 1000          -- only while window was live
+       AND ts < $2                   -- only while window was live
      ORDER BY ts ASC`,
-    [market.id, market.windowEnd],
+    [market.id, endMs],
   );
   return r.rows;
 }
