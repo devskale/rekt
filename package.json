@@ -9,6 +9,7 @@
     "test": "vitest",
     "receiver": "tsx src/receiver/index.ts",
     "receiver:demo": "tsx src/receiver/index.ts",
+    "sweep": "tsx src/sweeper/index.ts",
     "web": "tsx src/web/index.ts"
   },
   "dependencies": {
