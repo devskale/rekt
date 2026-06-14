@@ -227,17 +227,17 @@ async function runStrategy(
   const bal = trader.getBalance(strategy.config.name);
   console.log(`\n── ${strategy.config.name} ──────────────────────────────`);
   console.log(`  windows scored: ${markets.length}   trades opened: ${trades}`);
-  printBalance(bal);
+  printBalance(bal, args.startingCash);
   return bal;
 }
 
-function printBalance(b: StrategyBalance): void {
-  const pnl = b.totalPnL;
-  const roi = (pnl / b.cash + pnl) * 100; // rough ROI vs starting cash proxy
+function printBalance(b: StrategyBalance, startingCash: number): void {
+  const pnl = b.realizedPnL;
+  const roi = startingCash > 0 ? (pnl / startingCash) * 100 : 0;
   console.log(`  resolved:    ${b.resolvedCount} trades`);
   console.log(`  wins/losses: ${b.winCount}/${b.lossCount}  (win rate ${(b.winRate * 100).toFixed(1)}%)`);
   console.log(`  realized P&L: $${b.realizedPnL.toFixed(2)}`);
-  console.log(`  total P&L:    $${pnl.toFixed(2)}  (~${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%)`);
+  console.log(`  ROI:          ${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%  (on $${startingCash} start)`);
 }
 
 // ── main ────────────────────────────────────────────────────────────
