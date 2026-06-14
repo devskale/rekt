@@ -91,10 +91,10 @@ async function loadMarkets(args: Args): Promise<ResolvedMarket[]> {
     `SELECT id, slug, asset, window_start, window_end, outcome
      FROM markets
      WHERE asset = $1
-       AND window_end BETWEEN $2/1000 AND $3/1000
+       AND window_end BETWEEN $2 AND $3
        AND outcome IN ('up','down')          -- only score windows we can settle
      ORDER BY window_start ASC`,
-    [args.asset, args.fromMs, args.toMs],
+    [args.asset, Math.floor(args.fromMs / 1000), Math.floor(args.toMs / 1000)],
   );
   return r.rows;
 }
