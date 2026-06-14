@@ -55,11 +55,13 @@ app.get("/api/overview", async (_req, res) => {
   try {
     const [spot, latest] = await Promise.all([
       q(`SELECT price, ts FROM spot_ticks WHERE asset='btc' ORDER BY ts DESC LIMIT 1`, []),
-      q(`SELECT m.slug, m.asset, o.up_price, o.down_price, o.seconds_to_close,
+      q(`SELECT m.slug, m.asset, m.window_end, o.up_price, o.down_price,
+                (m.window_end - extract(epoch from now())::int) AS seconds_to_close,
                 o.up_ask_depth_95, o.down_ask_depth_95, o.up_best_ask, o.down_best_ask
          FROM odds_ticks o JOIN markets m ON m.id=o.market_id
-         WHERE o.seconds_to_close > 0
-         ORDER BY o.ts DESC LIMIT 1`, []),
+         WHERE m.window_end > extract(epoch from now())::int   -- actually-live window
+         ORDER BY m.window_end ASC, o.ts DESC                 -- soonest-closing, newest tick
+         LIMIT 1`, []),
     ]);
     res.json({ spot: spot.rows[0] ?? null, latestMarket: latest.rows[0] ?? null });
   } catch (e) { res.status(500).json({ error: out(e) }); }
@@ -99,7 +101,7 @@ app.get("/api/series", async (req, res) => {
          FROM odds_ticks o
          JOIN markets m ON m.id = o.market_id
          CROSS JOIN LATERAL (SELECT (floor(o.ts/1000/$1)*$1*1000)::bigint AS b) x
-         WHERE o.ts BETWEEN $2 AND $3 AND o.seconds_to_close > 0
+         WHERE o.ts BETWEEN $2 AND $3 AND o.ts < m.window_end*1000   -- only ticks while window was actually live
          ORDER BY m.slug, b, o.ts DESC`,
         [bucketSec, from, to],
       ),
