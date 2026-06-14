@@ -81,9 +81,9 @@ interface ResolvedMarket {
 }
 
 interface Tick {
-  ts: number; secondsToClose: number;
-  upMid: number | null; downMid: number | null;
-  upAsk: number | null; downAsk: number | null;
+  ts: number; seconds_to_close: number;
+  up_mid: number | null; down_mid: number | null;
+  up_best_ask: number | null; down_best_ask: number | null;
 }
 
 async function loadMarkets(args: Args): Promise<ResolvedMarket[]> {
@@ -158,9 +158,9 @@ async function runStrategy(
     const recentPrices: PricePoint[] = [];
 
     for (const t of ticks) {
-      // Use mid as the canonical price; fall back to ask then null
-      const upPrice = t.upMid ?? t.upAsk;
-      const downPrice = t.downMid ?? t.downAsk;
+      // pg returns snake_case keys (no auto-camel) — read them directly.
+      const upPrice = t.up_mid ?? t.up_best_ask;
+      const downPrice = t.down_mid ?? t.down_best_ask;
       if (upPrice == null || downPrice == null) continue;
 
       recentPrices.push({ price: upPrice, timestamp: t.ts });
@@ -185,8 +185,8 @@ async function runStrategy(
       const ctx = {
         market,
         recentPrices: recentPrices.slice(-30),
-        timeRemainingFraction: Math.max(0, t.secondsToClose / 300),
-        secondsToClose: t.secondsToClose,
+        timeRemainingFraction: Math.max(0, t.seconds_to_close / 300),
+        secondsToClose: t.seconds_to_close,
         openPositionMarketIds,
       };
 
