@@ -34,7 +34,7 @@ async function q(text: string, params: unknown[]) {
 }
 const out = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-/** full data span (ms epoch) — anchors the timefocus slider */
+/** full data span (ms epoch) — anchors the dual-handle slider */
 app.get("/api/span", async (_req, res) => {
   try {
     const r = await q(
@@ -152,16 +152,25 @@ const PAGE = `<!doctype html><html lang="en"><head>
   .segs button:last-child{border-right:0}
   .segs button:hover{color:var(--txt)}
   .segs button.active{background:var(--accent);color:#fff}
+  .reset{background:var(--panel2);color:var(--mut);border:1px solid var(--line);border-radius:8px;
+    padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;transition:.12s}
+  .reset:hover{color:var(--txt);border-color:var(--accent)}
+  /* dual-handle slider (custom, pointer-based, works on touch + mouse) */
   .sliderbox{flex:1;min-width:220px}
-  .slider{position:relative;height:28px;display:flex;align-items:center}
-  input[type=range]{-webkit-appearance:none;width:100%;background:transparent;margin:0}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:18px;width:18px;border-radius:50%;
-    background:var(--accent);border:2px solid var(--bg);cursor:grab;margin-top:-7px}
-  input[type=range]::-moz-range-thumb{height:16px;width:16px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);cursor:grab}
-  input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--line);border-radius:2px}
-  input[type=range]::-moz-range-track{height:4px;background:var(--line);border-radius:2px}
-  .rangebar{position:relative;height:4px;background:var(--line);border-radius:2px;margin:12px 0 4px}
-  .rangefill{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.35;border-radius:2px}
+  .trackwrap{position:relative;height:32px;width:100%;touch-action:none;cursor:pointer;margin-top:6px}
+  .trackwrap .track{position:absolute;top:50%;left:0;right:0;height:4px;transform:translateY(-50%);
+    background:var(--line);border-radius:2px;pointer-events:none}
+  .trackwrap .sel{position:absolute;top:50%;height:4px;transform:translateY(-50%);
+    background:var(--accent);opacity:.45;border-radius:2px;pointer-events:none}
+  .trackwrap .handle{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;
+    background:var(--accent);border:2px solid var(--bg);transform:translate(-50%,-50%);
+    cursor:grab;z-index:2;touch-action:none;box-shadow:0 0 0 1px var(--line)}
+  .trackwrap .handle:hover{background:var(--txt)}
+  .trackwrap .handle:active{cursor:grabbing}
+  /* chart drag-zoom selection box */
+  .zoomsel{position:absolute;top:0;bottom:0;background:rgba(163,113,247,.16);
+    border-left:1px solid var(--accent);border-right:1px solid var(--accent);
+    pointer-events:none;display:none;z-index:1}
   .readout{font-size:12px;color:var(--mut);display:flex;gap:18px;flex-wrap:wrap;align-items:baseline}
   .readout b{color:var(--txt);font-weight:600}
   .readout .ts{font-family:inherit}
@@ -176,7 +185,7 @@ const PAGE = `<!doctype html><html lang="en"><head>
 <header>
   <h1>rekt</h1><span class="sub">rektDBfiller · BTC live</span>
   <span class="sub"><span class="live"></span>capturing</span>
-  <span class="hint">drag slider to scrub · click range to zoom</span>
+  <span class="hint">drag a chart to zoom · drag handles to scrub · dbl-click / ⊗ / Esc to reset</span>
 </header>
 
 <div class="wrap">
@@ -191,18 +200,21 @@ const PAGE = `<!doctype html><html lang="en"><head>
         <button data-min="720">12h</button>
         <button data-min="0">all</button>
       </div>
+      <button id="resetBtn" class="reset" title="reset zoom to current preset (Esc)">⊗ reset</button>
       <div class="sliderbox">
-        <div class="rangebar"><div class="rangefill" id="rangeFill"></div></div>
-        <div class="slider">
-          <input type="range" id="focus" min="0" max="1000" value="1000" step="1">
+        <div class="trackwrap" id="track">
+          <div class="track"></div>
+          <div class="sel" id="selBand"></div>
+          <div class="handle" id="hLo" title="window start"></div>
+          <div class="handle" id="hHi" title="window end"></div>
         </div>
       </div>
     </div>
     <div class="readout" id="readout">
-      <span>zoom window: <b id="vRange">—</b></span>
-      <span>focus time: <b class="ts" id="vFocus">—</b></span>
-      <span>BTC @ focus: <b id="vFocusPrice">—</b></span>
-      <span>UP/DOWN @ focus: <b id="vFocusOdds">—</b></span>
+      <span>window: <b id="vRange">—</b></span>
+      <span>cursor: <b class="ts" id="vFocus">—</b></span>
+      <span>BTC @ cursor: <b id="vFocusPrice">—</b></span>
+      <span>UP/DOWN @ cursor: <b id="vFocusOdds">—</b></span>
     </div>
   </div>
 
@@ -240,12 +252,12 @@ const PAGE = `<!doctype html><html lang="en"><head>
   </div>
 </div>
 
-<footer>rekt · reads Postgres <code>rekt</code> db · live refresh 20s · all times local</footer>
+<footer>rekt · reads Postgres <code>rekt</code> db · live refresh 20s (overview) / 60s (series) · all times local</footer>
 
 <script>
 const $=id=>document.getElementById(id);
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;          // e.g. "Europe/Vienna"
-const TZ_SHORT = new Date().toLocaleTimeString([], {timeZoneName:'short'}).match(/\b[A-Z]{3,4}\b/g)?.pop() || TZ; // e.g. "CEST"
+const TZ_SHORT = new Date().toLocaleTimeString([], {timeZoneName:'short'}).match(/\\b[A-Z]{3,4}\\b/g)?.pop() || TZ; // e.g. "CEST"
 const fmtTime=ms=>new Date(ms).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
 const fmtHM =ms=>new Date(ms).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const fmtDT =ms=>new Date(ms).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -253,13 +265,16 @@ const fmt$  =n=>'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:0}
 
 // ── state ──────────────────────────────────────────────────────────
 let SPAN={first:0,last:0,spot:0,odds:0,markets:0};   // full capture range
-let rangeMin=60;                                       // current zoom window (0=all)
-let focusPct=1000;                                     // slider 0..1000 (rightmost)
-let latestSpotPrice=null, lastSeries=null;
+// Zoom model.  MODE='latest'  → window follows SPAN.last via lastPreset (rolls on refresh).
+//              MODE='manual' → window frozen at [winFrom,winTo] (user zoomed).
+let MODE='latest';
+let lastPreset=60;        // duration (min) to return to on reset; 0 = all
+let winFrom=0, winTo=0;   // absolute ms; source of truth when MODE==='manual'
+let hover={time:null,price:null,odds:null};
+let lastSeries=null;
+let dragging=false;       // suppress hover readouts during chart drag-zoom
 
 // ── charts ─────────────────────────────────────────────────────────
-// Charts use Chart.js time scale (x) so ticks render as real clock times
-// (09:05, 09:10…) auto-fit to the visible span. All times are LOCAL + shown TZ.
 const xTime={type:'time',display:true,time:{displayFormats:{minute:'HH:mm',hour:'HH:mm',day:'MMM d'}},
   title:{display:true,text:'Time ('+TZ_SHORT+')',color:'#7d8590',font:{size:10}},
   grid:{color:'#1f2733'},ticks:{color:'#7d8590',maxRotation:0,autoSkip:true,maxTicksLimit:8}};
@@ -280,50 +295,164 @@ const oddsC=mkChart('oddsChart',[
 // ── time math ──────────────────────────────────────────────────────
 function rangeBounds(){
   if(!SPAN.last) return {from:Date.now()-3600e3,to:Date.now()};
-  if(rangeMin===0) return {from:SPAN.first,to:SPAN.last};
-  const to=SPAN.last, from=to-rangeMin*60e3;
+  if(MODE==='manual') return {from:Math.min(winFrom,winTo),to:Math.max(winFrom,winTo)};
+  if(lastPreset===0) return {from:SPAN.first,to:SPAN.last};
+  const to=SPAN.last, from=to-lastPreset*60e3;
   return {from:Math.max(from,SPAN.first),to};
 }
-function focusMs(){
-  const {from,to}=rangeBounds();
-  return from + (to-from)*(focusPct/1000);
-}
-function fmtRange(min){
-  if(min===0) return 'all';
-  if(min<60) return min+'m';
-  if(min%60===0) return (min/60)+'h';
-  return (min/60).toFixed(1)+'h';
+function pctOf(ms){ if(!isFinite(+SPAN.first)||!isFinite(+SPAN.last)||SPAN.last<=SPAN.first) return 0; return Math.max(0,Math.min(1,(ms-SPAN.first)/(SPAN.last-SPAN.first))); }
+function msOf(p){ return Math.round(SPAN.first + p*(SPAN.last-SPAN.first)); }
+function durStr(ms){
+  const s=Math.max(0,Math.round(ms/1000)); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+  if(h>0) return h+'h'+(m>0?' '+m+'m':'');
+  if(m>0) return m+'m'+(sec>0?' '+sec+'s':'');
+  return sec+'s';
 }
 
-// ── render slider bar + readouts ───────────────────────────────────
+// ── slider + readouts ──────────────────────────────────────────────
+function renderSlider(){
+  // No data yet (or error response) → show the full track selected; slider is inert.
+  const noSpan = !isFinite(+SPAN.last)||SPAN.last<=SPAN.first;
+  let lo, hi;
+  if(noSpan){ lo=0; hi=1; }
+  else { const {from,to}=rangeBounds(); lo=pctOf(from); hi=pctOf(to); }
+  $('hLo').style.left=(lo*100)+'%'; $('hHi').style.left=(hi*100)+'%';
+  $('selBand').style.left=(lo*100)+'%'; $('selBand').style.width=((hi-lo)*100)+'%';
+}
 function renderRange(){
+  const {from,to}=rangeBounds(); const span=to-from;
+  const f = span>24*3600e3 ? fmtDT : fmtHM;
+  $('vRange').textContent=f(from)+' \\u2192 '+f(to)+' ('+TZ_SHORT+') \\u00b7 '+durStr(span)+(MODE==='manual'?'  [manual]':'');
+  $('oddsRange').textContent=f(from)+' \\u2192 '+f(to)+' ('+TZ_SHORT+')';
+  renderHover();
+}
+function renderHover(){
   const {from,to}=rangeBounds();
-  const span=Math.max(0,to-from);
-  $('vRange').textContent=rangeMin===0?('all ('+(span/3600e3).toFixed(1)+'h)'):fmtRange(rangeMin);
-  $('oddsRange').textContent=fmtHM(from)+' → '+fmtHM(to)+' ('+TZ_SHORT+')';
-  $('rangeFill').style.width=(rangeMin===0?100:(rangeMin*60e3/span*100))+'%';
-  $('vFocus').textContent=fmtDT(focusMs())+' '+TZ_SHORT;
-  // focus line position on spot chart (x of focus relative to from..to)
-  const fp=(focusMs()-from)/(span||1);
-  ['spotLine'].forEach(id=>{const el=$(id);el.style.display=fp>=0&&fp<=1?'block':'none';el.style.left=(fp*100)+'%';});
-  $('oddsLine').style.left=(fp*100)+'%';$('oddsLine').style.display=fp>=0&&fp<=1?'block':'none';
-  $('spotDot').style.left=(fp*100)+'%';$('spotDot').style.display=fp>=0&&fp<=1?'block':'none';
-  // focus values: interpolate from series at focusMs
-  const f=$('vFocusPrice'), o=$('vFocusOdds');
-  if(lastSeries && lastSeries.spot.length){
-    const s=lastSeries.spot; const t=focusMs()/1000;
-    let i=s.findIndex(p=>p.ts/1000>=t); if(i<0)i=s.length-1; const p=s[i]||s[s.length-1];
-    if(p){f.textContent=fmt$(p.price); const d=p.price-lastSeries.spot[0].price; f.className='b '+(d>=0?'up':'dn');}
-  } else f.textContent='—';
-  if(lastSeries && lastSeries.odds.length){
-    const t=focusMs()/1000; const near=[...lastSeries.odds].sort((a,b)=>Math.abs(a.ts/1000-t)-Math.abs(b.ts/1000-t))[0];
-    o.textContent=near?(near.up_mid!=null?(near.up_mid*100).toFixed(0)+'% / '+(near.down_mid*100).toFixed(0)+'%':(near.up_gamma!=null?'~'+(near.up_gamma*100).toFixed(0)+'% (gamma)':'—')):'—';
-  } else o.textContent='—';
+  const t = hover.time!=null?hover.time:(from+to)/2;
+  $('vFocus').textContent=fmtDT(t)+' '+TZ_SHORT;
+  const p=$('vFocusPrice'); p.textContent=hover.price!=null?fmt$(hover.price):'\\u2014'; p.className=hover.price!=null?'b':'b mut';
+  $('vFocusOdds').textContent=hover.odds!=null?hover.odds:'\\u2014';
+}
+
+// ── dual-handle slider wiring (pointer events: mouse + touch) ──────
+const trackEl=$('track');
+let dragH=null;   // 'lo' | 'hi' | null
+function pctFromX(x){ const r=trackEl.getBoundingClientRect(); return Math.max(0,Math.min(1,(x-r.left)/r.width)); }
+function moveHandle(which,p){
+  const cur=rangeBounds();
+  let lo=pctOf(cur.from), hi=pctOf(cur.to);
+  if(which==='lo') lo=Math.min(p, hi-0.003); else hi=Math.max(p, lo+0.003);
+  MODE='manual'; clearPresetActive();
+  winFrom=msOf(lo); winTo=msOf(hi);
+  renderSlider(); renderRange();   // readouts update live; data refetched on pointerup
+}
+trackEl.addEventListener('pointerdown',e=>{
+  if(e.target.id==='hHi') dragH='hi';
+  else if(e.target.id==='hLo') dragH='lo';
+  else { // clicked the track: jump the nearer handle
+    const p=pctFromX(e.clientX); const cur=rangeBounds();
+    const lo=pctOf(cur.from), hi=pctOf(cur.to);
+    dragH = Math.abs(p-lo)<=Math.abs(p-hi)?'lo':'hi';
+    moveHandle(dragH,p);
+  }
+  e.preventDefault();
+  try{ trackEl.setPointerCapture(e.pointerId); }catch(_){}
+  dragging=true;
+});
+trackEl.addEventListener('pointermove',e=>{ if(!dragH)return; moveHandle(dragH,pctFromX(e.clientX)); });
+function endSliderDrag(e){ if(!dragH)return; dragH=null; dragging=false; try{ trackEl.releasePointerCapture(e.pointerId); }catch(_){} loadSeries(); }
+trackEl.addEventListener('pointerup',endSliderDrag);
+trackEl.addEventListener('pointercancel',endSliderDrag);
+
+// ── presets + reset ────────────────────────────────────────────────
+function clearPresetActive(){ $('rangeSeg').querySelectorAll('button').forEach(b=>b.classList.remove('active')); }
+function applyPreset(min){
+  MODE='latest'; lastPreset=min;
+  clearPresetActive();
+  const btn=[].slice.call($('rangeSeg').querySelectorAll('button')).find(b=>+b.dataset.min===min);
+  if(btn) btn.classList.add('active');
+  renderSlider(); renderRange(); loadSeries();
+}
+$('rangeSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; applyPreset(+b.dataset.min); });
+$('resetBtn').addEventListener('click',()=>applyPreset(lastPreset));
+window.addEventListener('keydown',e=>{ if(e.key==='Escape' && MODE==='manual') applyPreset(lastPreset); });
+
+// ── chart hover (cursor readouts + focus line) ─────────────────────
+function nearestIdx(chart,e){ const els=chart.getElementsAtEventForMode(e,'index',{intersect:false},false); return els.length?els[0].index:null; }
+function attachHover(chart,canvasId,lineId,kind){
+  const cv=$(canvasId); const wrap=cv.parentElement; const line=$(lineId);
+  const moveSpotDot = kind==='spot';
+  cv.addEventListener('mousemove',e=>{
+    if(dragging) return;
+    const r=wrap.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width*100;
+    line.style.display='block'; line.style.left=px+'%';
+    if(moveSpotDot){ $('spotDot').style.display='block'; $('spotDot').style.left=px+'%'; }
+    const idx=nearestIdx(chart,e);
+    if(idx!=null){
+      const pt0=chart.data.datasets[0].data[idx];
+      if(pt0){ hover.time=pt0.x;
+        if(kind==='spot'){ hover.price=pt0.y; }
+        else { const u=chart.data.datasets[0].data[idx], d=chart.data.datasets[1].data[idx];
+          hover.odds=(u&&d)?(u.y.toFixed(0)+'% / '+d.y.toFixed(0)+'%'):'\\u2014'; }
+      }
+    }
+    renderHover();
+  });
+  cv.addEventListener('mouseleave',()=>{
+    line.style.display='none'; if(moveSpotDot) $('spotDot').style.display='none';
+    if(kind==='spot') hover.price=null; else hover.odds=null; renderHover();
+  });
+}
+
+// ── chart click-drag zoom ──────────────────────────────────────────
+function attachZoom(chart,canvasId){
+  const cv=$(canvasId); const wrap=cv.parentElement;
+  let box=wrap.querySelector('.zoomsel');
+  if(!box){ box=document.createElement('div'); box.className='zoomsel'; wrap.appendChild(box); }
+  let downX=null, moved=false;
+  // map a canvas-relative px → ms using the rendered scale bounds (robust across Chart.js builds)
+  function timeAt(px){
+    const ca=chart.chartArea, s=chart.scales.x;
+    if(!ca || !s || s.min==null || s.max==null || s.max<=s.min) return null;
+    return s.min + (px-ca.left)/(ca.right-ca.left)*(s.max-s.min);
+  }
+  cv.addEventListener('pointerdown',e=>{ if(e.button!==0) return; downX=e.clientX; moved=false;
+    try{ cv.setPointerCapture(e.pointerId); }catch(_){} });
+  cv.addEventListener('pointermove',e=>{
+    if(downX==null) return;
+    if(Math.abs(e.clientX-downX)>4){ moved=true; dragging=true; }
+    if(moved){ const r=wrap.getBoundingClientRect();
+      const x0=Math.min(downX,e.clientX)-r.left, x1=Math.max(downX,e.clientX)-r.left;
+      box.style.display='block'; box.style.left=x0+'px'; box.style.width=(x1-x0)+'px'; }
+  });
+  function up(e){
+    try{ cv.releasePointerCapture(e.pointerId); }catch(_){}
+    box.style.display='none';
+    if(!moved){ downX=null; dragging=false; return; }   // plain click → leave tooltip alone
+    const cr=cv.getBoundingClientRect();
+    const px0=Math.min(downX,e.clientX)-cr.left, px1=Math.max(downX,e.clientX)-cr.left;
+    downX=null; dragging=false;
+    let t0=timeAt(px0), t1=timeAt(px1);
+    if(t0==null||t1==null||t1-t0<2000) return;          // ignore trivial selections
+    if(t1<t0){ const tmp=t0; t0=t1; t1=tmp; }
+    setManualWindow(t0,t1);
+  }
+  cv.addEventListener('pointerup',up);
+  cv.addEventListener('pointercancel',()=>{ box.style.display='none'; downX=null; moved=false; dragging=false; });
+  cv.addEventListener('dblclick',()=>applyPreset(lastPreset));
+}
+function setManualWindow(from,to){
+  MODE='manual'; winFrom=from; winTo=to; clearPresetActive();
+  renderSlider(); renderRange(); loadSeries();
 }
 
 // ── data fetch ─────────────────────────────────────────────────────
 async function loadSpan(){
-  try{ const r=await fetch('api/span'); const d=await r.json(); SPAN=d; }catch(e){console.error(e);}
+  try{
+    const r=await fetch('api/span'); const d=await r.json();
+    // coerce + guard: an error response (no DB) or empty rows yields all-zero fields
+    SPAN={first:+d.first||0,last:+d.last||0,spot:+d.spot||0,odds:+d.odds||0,markets:+d.markets||0};
+  }catch(e){console.error(e);}
 }
 async function loadSeries(){
   const {from,to}=rangeBounds();
@@ -347,38 +476,38 @@ async function loadOverview(){
     const r=await fetch('api/overview'); const o=await r.json();
     if(o.spot){latestSpotPrice=+o.spot.price; $('spotPrice').textContent=fmt$(latestSpotPrice);}
     if(o.latestMarket){const m=o.latestMarket;
-      $('upPrice').textContent=m.up_mid!=null?(m.up_mid*100).toFixed(1)+'%':(m.up_gamma!=null?'~'+(m.up_gamma*100).toFixed(0)+'%*':'—');
-      $('dnPrice').textContent=m.down_mid!=null?(m.down_mid*100).toFixed(1)+'%':(m.down_gamma!=null?'~'+(m.down_gamma*100).toFixed(0)+'%*':'—');
-      $('mktInfo').innerHTML='window ends <b>'+(m.seconds_to_close>0?fmtTime(Date.now()+m.seconds_to_close*1000):'—')+'</b>';
+      $('upPrice').textContent=m.up_mid!=null?(m.up_mid*100).toFixed(1)+'%':(m.up_gamma!=null?'~'+(m.up_gamma*100).toFixed(0)+'%*':'\\u2014');
+      $('dnPrice').textContent=m.down_mid!=null?(m.down_mid*100).toFixed(1)+'%':(m.down_gamma!=null?'~'+(m.down_gamma*100).toFixed(0)+'%*':'\\u2014');
+      $('mktInfo').innerHTML='window ends <b>'+(m.seconds_to_close>0?fmtTime(Date.now()+m.seconds_to_close*1000):'\\u2014')+'</b>';
     }
     $('cSpot').textContent=Number(SPAN.spot).toLocaleString();
     $('cOdds').textContent=Number(SPAN.odds).toLocaleString();
     $('cMkt').textContent=Number(SPAN.markets).toLocaleString();
-    $('cHr').textContent=SPAN.first?((SPAN.last-SPAN.first)/3600e3).toFixed(1):'—';
+    $('cHr').textContent=SPAN.first?((SPAN.last-SPAN.first)/3600e3).toFixed(1):'\\u2014';
     if(latestSpotPrice!=null && lastSeries && lastSeries.spot.length){
       const first=lastSeries.spot[0].price; const dd=(latestSpotPrice-first)/first*100;
       const el=$('spotDelta'); el.textContent=(dd>=0?'+':'')+dd.toFixed(2)+'%'; el.className='delta '+(dd>=0?'up':'dn');
     }
   }catch(e){console.error(e);}
 }
+let latestSpotPrice=null;
 
-async function refreshAll(){ await loadSpan(); await Promise.all([loadSeries(),loadOverview()]); renderRange(); }
+// ── wire hover/zoom ────────────────────────────────────────────────
+attachHover(spotC,'spotChart','spotLine','spot');
+attachHover(oddsC,'oddsChart','oddsLine','odds');
+attachZoom(spotC,'spotChart');
+attachZoom(oddsC,'oddsChart');
 
-// ── wire controls ──────────────────────────────────────────────────
-$('rangeSeg').addEventListener('click',e=>{
-  const b=e.target.closest('button'); if(!b)return;
-  $('rangeSeg').querySelectorAll('button').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active'); rangeMin=+b.dataset.min;
-  // snap focus to right edge on range change (show latest by default)
-  focusPct=1000; $('focus').value=1000;
-  refreshAll();
-});
-$('focus').addEventListener('input',e=>{ focusPct=+e.target.value; renderRange(); });
-
-// initial + periodic
+async function refreshAll(){
+  await loadSpan();
+  if(!winTo){ const b=rangeBounds(); winFrom=b.from; winTo=b.to; }   // init manual defaults
+  await Promise.all([loadSeries(),loadOverview()]);
+  renderSlider(); renderRange();
+}
 refreshAll();
 setInterval(loadOverview,20000);          // live header refreshes fast
-setInterval(()=>{ loadSpan(); loadSeries(); renderRange(); }, 60000); // series slower
+// series slower; rangeBounds() respects MODE → presets roll, manual stays frozen (no snap)
+setInterval(async()=>{ await loadSpan(); await loadSeries(); renderSlider(); renderRange(); },60000);
 </script></body></html>`;
 
 app.listen(PORT, () => { console.log(`rekt web → http://localhost:${PORT}`); });
