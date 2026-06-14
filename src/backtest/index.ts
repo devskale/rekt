@@ -25,7 +25,7 @@ import {
   CoinFlipStrategy,
   MomentumStrategy,
 } from "../strategies/index.js";
-import { clearStrategies, registerDefaults } from "../strategies/registry.js";
+import { clearStrategies, registerDefaults, getEnabledStrategies, getStrategy } from "../strategies/registry.js";
 
 // ── config ──────────────────────────────────────────────────────────
 const pool = new Pool({
@@ -115,10 +115,8 @@ function buildStrategies(which: string): Strategy[] {
   clearStrategies();
   registerDefaults();
   if (which === "all") {
-    const { getEnabledStrategies } = require("../strategies/registry.js");
     return getEnabledStrategies();
   }
-  const { getStrategy } = require("../strategies/registry.js");
   const s = getStrategy(which);
   if (!s) { console.error("unknown strategy:", which); process.exit(2); }
   return [s];
