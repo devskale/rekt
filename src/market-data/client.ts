@@ -92,13 +92,16 @@ export async function fetchBtc5minMarkets(): Promise<Market[]> {
       );
 
       for (const m of raw) {
-        if (m.active && !m.closed && !seen.has(m.id)) {
+        // Tradeable iff: active, not closed, AND window hasn't ended
+        const nowMs = Date.now();
+        const windowEndMs = new Date(m.endDate).getTime();
+        if (m.active && !m.closed && windowEndMs > nowMs && !seen.has(m.id)) {
           seen.add(m.id);
           markets.push(toMarket(m));
         }
       }
-    } catch {
-      // Market doesn't exist yet, expired, or geo-restricted — skip silently
+    } catch (err) {
+      logger.warn("market-data", "slug fetch failed: " + slug, err);
     }
   }
 

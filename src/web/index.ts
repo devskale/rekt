@@ -119,6 +119,8 @@ const PAGE = `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>rekt — BTC live</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/date-fns/locale/en/index.js"></script>
 <style>
   :root{ --bg:#0a0e14; --panel:#121822; --panel2:#0d1219; --line:#1f2733; --txt:#e6edf3;
          --mut:#7d8590; --up:#3fb950; --dn:#f85149; --spot:#58a6ff; --amber:#d29922; --accent:#a371f7; }
@@ -197,16 +199,16 @@ const PAGE = `<!doctype html><html lang="en"><head>
       </div>
     </div>
     <div class="readout" id="readout">
-      <span>view: <b id="vRange">—</b></span>
-      <span>focus: <b class="ts" id="vFocus">—</b></span>
-      <span>focus price: <b id="vFocusPrice">—</b></span>
-      <span>focus up/down: <b id="vFocusOdds">—</b></span>
+      <span>zoom window: <b id="vRange">—</b></span>
+      <span>focus time: <b class="ts" id="vFocus">—</b></span>
+      <span>BTC @ focus: <b id="vFocusPrice">—</b></span>
+      <span>UP/DOWN @ focus: <b id="vFocusOdds">—</b></span>
     </div>
   </div>
 
   <!-- live header -->
   <div class="row main" style="margin-bottom:16px">
-    <div class="card"><h2>BTC spot (USD)</h2>
+    <div class="card"><h2>BTC spot price (USD)</h2>
       <div><span class="big" id="spotPrice">—</span><span class="delta" id="spotDelta"></span></div>
       <div class="chart"><canvas id="spotChart"></canvas>
         <div class="focusline" id="spotLine" style="display:none"></div>
@@ -230,7 +232,7 @@ const PAGE = `<!doctype html><html lang="en"><head>
 
   <!-- odds over the selected range -->
   <div class="row focus">
-    <div class="card"><h2>UP / DOWN odds over time — <span class="mut" id="oddsRange">—</span></h2>
+    <div class="card"><h2>UP / DOWN odds — <span class="mut" id="oddsRange">—</span></h2>
       <div class="chart sm"><canvas id="oddsChart"></canvas>
         <div class="focusline" id="oddsLine" style="display:none"></div>
       </div>
@@ -242,7 +244,10 @@ const PAGE = `<!doctype html><html lang="en"><head>
 
 <script>
 const $=id=>document.getElementById(id);
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;          // e.g. "Europe/Vienna"
+const TZ_SHORT = new Date().toLocaleTimeString([], {timeZoneName:'short'}).match(/\b[A-Z]{3,4}\b/g)?.pop() || TZ; // e.g. "CEST"
 const fmtTime=ms=>new Date(ms).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const fmtHM =ms=>new Date(ms).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const fmtDT =ms=>new Date(ms).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
 const fmt$  =n=>'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
 
@@ -253,20 +258,24 @@ let focusPct=1000;                                     // slider 0..1000 (rightm
 let latestSpotPrice=null, lastSeries=null;
 
 // ── charts ─────────────────────────────────────────────────────────
-const xTime={display:true,grid:{color:'#1f2733'},ticks:{color:'#7d8590',maxRotation:0,
-  callback:function(v,i){const l=this.getLabelForValue(v);return i%Math.ceil(this.chart.data.labels.length/6||1)===0?fmtTime(l*1000):'';}}};
-const yAxis={grid:{color:'#1f2733'},ticks:{color:'#7d8590'}};
-function mkChart(ctx,datasets,yopts){return new Chart(ctx,{type:'line',data:{labels:[],datasets},
+// Charts use Chart.js time scale (x) so ticks render as real clock times
+// (09:05, 09:10…) auto-fit to the visible span. All times are LOCAL + shown TZ.
+const xTime={type:'time',display:true,time:{displayFormats:{minute:'HH:mm',hour:'HH:mm',day:'MMM d'}},
+  title:{display:true,text:'Time ('+TZ_SHORT+')',color:'#7d8590',font:{size:10}},
+  grid:{color:'#1f2733'},ticks:{color:'#7d8590',maxRotation:0,autoSkip:true,maxTicksLimit:8}};
+const yAxis=lbl=>({grid:{color:'#1f2733'},ticks:{color:'#7d8590'},
+  title:{display:!!lbl,text:lbl,color:'#7d8590',font:{size:10}}});
+function mkChart(ctx,datasets,yopts){return new Chart(ctx,{type:'line',data:{datasets},
   options:{animation:false,responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',axis:'x',intersect:false},
     plugins:{legend:{display:false},tooltip:{callbacks:{
-      title:its=>fmtDT(its[0].parsed.x*1000),
+      title:its=>fmtDT(its[0].parsed.x),
       label:it=>it.dataset.label+': '+it.parsed.y.toFixed(2)}}},
     scales:{x:xTime,y:yopts}}});}
-const spotC=mkChart('spotChart',[{label:'BTC',data:[],borderColor:'var(--spot)',backgroundColor:'rgba(88,166,255,.12)',fill:true,borderWidth:2,pointRadius:0,tension:.25}],yAxis);
+const spotC=mkChart('spotChart',[{label:'BTC',data:[],borderColor:'var(--spot)',backgroundColor:'rgba(88,166,255,.12)',fill:true,borderWidth:2,pointRadius:0,tension:.25}],yAxis('USD'));
 const oddsC=mkChart('oddsChart',[
   {label:'UP',data:[],borderColor:'var(--up)',backgroundColor:'rgba(63,185,80,.10)',fill:true,borderWidth:2,pointRadius:0,tension:.2},
   {label:'DOWN',data:[],borderColor:'var(--dn)',backgroundColor:'rgba(248,81,73,.08)',fill:true,borderWidth:2,pointRadius:0,tension:.2}],
-  {min:0,max:100,grid:{color:'#1f2733'},ticks:{color:'#7d8590',callback:v=>v+'%'}});
+  {min:0,max:100,grid:{color:'#1f2733'},ticks:{color:'#7d8590',callback:v=>v+'%'},title:{display:true,text:'implied probability (%)',color:'#7d8590',font:{size:10}}});
 
 // ── time math ──────────────────────────────────────────────────────
 function rangeBounds(){
@@ -291,9 +300,9 @@ function renderRange(){
   const {from,to}=rangeBounds();
   const span=Math.max(0,to-from);
   $('vRange').textContent=rangeMin===0?('all ('+(span/3600e3).toFixed(1)+'h)'):fmtRange(rangeMin);
-  $('oddsRange').textContent=fmtDT(from)+' → '+fmtDT(to);
+  $('oddsRange').textContent=fmtHM(from)+' → '+fmtHM(to)+' ('+TZ_SHORT+')';
   $('rangeFill').style.width=(rangeMin===0?100:(rangeMin*60e3/span*100))+'%';
-  $('vFocus').textContent=fmtDT(focusMs());
+  $('vFocus').textContent=fmtDT(focusMs())+' '+TZ_SHORT;
   // focus line position on spot chart (x of focus relative to from..to)
   const fp=(focusMs()-from)/(span||1);
   ['spotLine'].forEach(id=>{const el=$(id);el.style.display=fp>=0&&fp<=1?'block':'none';el.style.left=(fp*100)+'%';});
@@ -320,19 +329,16 @@ async function loadSeries(){
   const {from,to}=rangeBounds();
   try{
     const r=await fetch('api/series?from='+from+'&to='+to); const d=await r.json(); lastSeries=d;
-    // spot
-    spotC.data.labels=d.spot.map(p=>p.ts/1000); spotC.data.datasets[0].data=d.spot.map(p=>+p.price);
+    // spot → {x: Date ms, y: price} for the time scale
+    spotC.data.datasets[0].data=d.spot.map(p=>({x:+p.ts, y:+p.price}));
     spotC.update('none');
-    // odds — pick the market with the most points to show a clean single curve,
-    // but overlay all markets faintly? For v2 keep single clean curve (busiest market).
+    // odds — show the market with the most points (clean single curve over the range)
     if(d.odds.length){
       const byM={}; d.odds.forEach(r=>{(byM[r.slug]=byM[r.slug]||[]).push(r);});
-      const busiest=Object.entries(byM).sort((a,b)=>b[1].length-a[1].length).slice(0,1).map(e=>e[1]).flat()
-        .sort((a,b)=>a.ts-b.ts);
-      oddsC.data.labels=busiest.map(r=>r.ts/1000);
-      oddsC.data.datasets[0].data=busiest.map(r=>(r.up_mid!=null?r.up_mid:r.up_gamma)*100);
-      oddsC.data.datasets[1].data=busiest.map(r=>(r.down_mid!=null?r.down_mid:r.down_gamma)*100);
-    } else { oddsC.data.labels=[]; oddsC.data.datasets.forEach(ds=>ds.data=[]); }
+      const busiest=Object.entries(byM).sort((a,b)=>b[1].length-a[1].length)[0][1].sort((a,b)=>a.ts-b.ts);
+      oddsC.data.datasets[0].data=busiest.map(r=>({x:+r.ts, y:(r.up_mid!=null?r.up_mid:r.up_gamma)*100}));
+      oddsC.data.datasets[1].data=busiest.map(r=>({x:+r.ts, y:(r.down_mid!=null?r.down_mid:r.down_gamma)*100}));
+    } else { oddsC.data.datasets.forEach(ds=>ds.data=[]); }
     oddsC.update('none');
   }catch(e){console.error(e);}
 }
