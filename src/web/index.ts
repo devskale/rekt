@@ -89,7 +89,8 @@ app.get("/api/series", async (req, res) => {
          GROUP BY 1 ORDER BY 1`,
         [bucketSec, from, to],
       ),
-      // odds: latest tick per market per bucket keeps the up/down curves clean
+      // odds: latest tick per market per bucket keeps the up/down curves clean.
+      // Bucket the tick ts itself (no LATERAL — that cartesian-multiplies).
       q(
         `SELECT DISTINCT ON (m.slug, b) b AS ts, m.slug,
                 o.up_price, o.down_price,
@@ -97,9 +98,7 @@ app.get("/api/series", async (req, res) => {
                 o.up_ask_depth_95, o.down_ask_depth_95
          FROM odds_ticks o
          JOIN markets m ON m.id = o.market_id
-         JOIN LATERAL (SELECT (floor(o2.ts/1000/$1)*$1*1000)::bigint AS b
-                       FROM odds_ticks o2
-                       WHERE o2.ts BETWEEN $2 AND $3) x ON true
+         CROSS JOIN LATERAL (SELECT (floor(o.ts/1000/$1)*$1*1000)::bigint AS b) x
          WHERE o.ts BETWEEN $2 AND $3 AND o.seconds_to_close > 0
          ORDER BY m.slug, b, o.ts DESC`,
         [bucketSec, from, to],
