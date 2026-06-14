@@ -100,10 +100,16 @@ async function loadMarkets(args: Args): Promise<ResolvedMarket[]> {
 }
 
 async function loadTicks(market: ResolvedMarket): Promise<Tick[]> {
+  // Only genuine in-window ticks: 0 < stc <= 300. Polymarket returns a market
+  // as 'active' for ~10 min (as prev/next too), so stc>300 ticks are noise from
+  // when this market was the *next* window. Filter them out so strategies see
+  // the real 300→0 lifecycle and reach the late/scalp zone.
   const r = await pool.query(
     `SELECT ts, seconds_to_close, up_mid, down_mid, up_best_ask, down_best_ask
      FROM odds_ticks
-     WHERE market_id = $1 AND ts < $2 * 1000  -- only while window was live
+     WHERE market_id = $1
+       AND seconds_to_close > 0 AND seconds_to_close <= 300
+       AND ts < $2 * 1000          -- only while window was live
      ORDER BY ts ASC`,
     [market.id, market.windowEnd],
   );
