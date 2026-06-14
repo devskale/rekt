@@ -23,8 +23,11 @@ CREATE TABLE IF NOT EXISTS odds_ticks (
   ts                 BIGINT NOT NULL,       -- unix ms (capture time)
   market_id          TEXT NOT NULL REFERENCES markets(id),
   seconds_to_close   INTEGER,               -- window_end - now (sec); always > 0 (we skip expired)
-  up_price           REAL,
+  up_price           REAL,                  -- Gamma outcomePrices (metadata; near-frozen ~0.499 — NOT the real price)
   down_price         REAL,
+  -- Book-derived CANONICAL price (v2). mid = (best_bid+best_ask)/2. This is the traded price.
+  up_mid             REAL,
+  down_mid           REAL,
   -- Up token (clobTokenIds[0]) order book
   up_best_bid        REAL,
   up_best_ask        REAL,

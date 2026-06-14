@@ -29,7 +29,7 @@ const SCHEMA_DDL = [
   "CREATE TABLE IF NOT EXISTS markets (id TEXT PRIMARY KEY, slug TEXT UNIQUE NOT NULL, asset TEXT NOT NULL, window_start BIGINT NOT NULL, window_end BIGINT NOT NULL, first_seen TIMESTAMPTZ NOT NULL DEFAULT now(), outcome TEXT, resolved_at TIMESTAMPTZ)",
   "CREATE INDEX IF NOT EXISTS idx_markets_window ON markets (window_start)",
   "CREATE INDEX IF NOT EXISTS idx_markets_asset ON markets (asset, window_start)",
-  "CREATE TABLE IF NOT EXISTS odds_ticks (ts BIGINT NOT NULL, market_id TEXT NOT NULL REFERENCES markets(id), seconds_to_close INTEGER, up_price REAL, down_price REAL, up_best_bid REAL, up_best_ask REAL, up_spread REAL, up_ask_depth_95 REAL, up_ask_depth_99 REAL, up_bid_depth_05 REAL, up_bid_depth_01 REAL, down_best_bid REAL, down_best_ask REAL, down_spread REAL, down_ask_depth_95 REAL, down_ask_depth_99 REAL, down_bid_depth_05 REAL, down_bid_depth_01 REAL, PRIMARY KEY (market_id, ts))",
+  "CREATE TABLE IF NOT EXISTS odds_ticks (ts BIGINT NOT NULL, market_id TEXT NOT NULL REFERENCES markets(id), seconds_to_close INTEGER, up_price REAL, down_price REAL, up_mid REAL, down_mid REAL, up_best_bid REAL, up_best_ask REAL, up_spread REAL, up_ask_depth_95 REAL, up_ask_depth_99 REAL, up_bid_depth_05 REAL, up_bid_depth_01 REAL, down_best_bid REAL, down_best_ask REAL, down_spread REAL, down_ask_depth_95 REAL, down_ask_depth_99 REAL, down_bid_depth_05 REAL, down_bid_depth_01 REAL, PRIMARY KEY (market_id, ts))",
   "CREATE INDEX IF NOT EXISTS idx_odds_ts ON odds_ticks (ts)",
   "CREATE TABLE IF NOT EXISTS spot_ticks (ts BIGINT NOT NULL, asset TEXT NOT NULL, price REAL NOT NULL, source TEXT NOT NULL DEFAULT 'binance', PRIMARY KEY (asset, ts))",
   "CREATE INDEX IF NOT EXISTS idx_spot_ts ON spot_ticks (ts)",
@@ -238,14 +238,14 @@ export class PgWriter {
 
       // 2) INSERT odds ticks (idempotent).
       if (odds.length) {
-        const tRows = placeholders(odds.length, 19);
+        const tRows = placeholders(odds.length, 21);
         const tParams: (string | number | null)[] = odds.flatMap((r) => [
-          r.ts, r.market_id, r.seconds_to_close, r.up_price, r.down_price,
+          r.ts, r.market_id, r.seconds_to_close, r.up_price, r.down_price, r.up_mid, r.down_mid,
           r.up_best_bid, r.up_best_ask, r.up_spread, r.up_ask_depth_95, r.up_ask_depth_99, r.up_bid_depth_05, r.up_bid_depth_01,
           r.down_best_bid, r.down_best_ask, r.down_spread, r.down_ask_depth_95, r.down_ask_depth_99, r.down_bid_depth_05, r.down_bid_depth_01,
         ]);
         await client.query(
-          "INSERT INTO odds_ticks (ts,market_id,seconds_to_close,up_price,down_price,up_best_bid,up_best_ask,up_spread,up_ask_depth_95,up_ask_depth_99,up_bid_depth_05,up_bid_depth_01,down_best_bid,down_best_ask,down_spread,down_ask_depth_95,down_ask_depth_99,down_bid_depth_05,down_bid_depth_01) VALUES " +
+          "INSERT INTO odds_ticks (ts,market_id,seconds_to_close,up_price,down_price,up_mid,down_mid,up_best_bid,up_best_ask,up_spread,up_ask_depth_95,up_ask_depth_99,up_bid_depth_05,up_bid_depth_01,down_best_bid,down_best_ask,down_spread,down_ask_depth_95,down_ask_depth_99,down_bid_depth_05,down_bid_depth_01) VALUES " +
             tRows + " ON CONFLICT (market_id,ts) DO NOTHING",
           tParams,
         );

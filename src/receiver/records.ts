@@ -4,7 +4,15 @@
 // to validate these shapes before we commit to a real schema, so keeping
 // them in one reviewable place is the point.
 
-/** One line in data/odds/{YYYY-MM-DD}.jsonl — per market, per tick. */
+/**
+ * One line in data/odds/{YYYY-MM-DD}.jsonl — per market, per tick.
+ *
+ * PRICE MODEL (v2): the canonical price is the book MID
+ * (`up_mid`/`down_mid` = (best_bid+best_ask)/2). Gamma's outcomePrices
+ * (`up_price`/`down_price`) is kept as metadata only — it is near-frozen
+ * (~0.499) across a window's life and does NOT reflect actual trading.
+ * Read `*_mid` for the real price.
+ */
 export interface OddsRecord {
   ts: number;
   market_id: string;
@@ -13,9 +21,13 @@ export interface OddsRecord {
   window_start: number;
   window_end: number;
   seconds_to_close: number;
+  // Gamma outcomePrices — METADATA ONLY (near-frozen; do not treat as price)
   up_price: number;
   down_price: number;
-  // Up token (clobTokenIds[0]) order book.
+  // Book-derived CANONICAL price
+  up_mid: number | null;
+  down_mid: number | null;
+  // Up token (clobTokenIds[0]) order book
   up_best_bid: number | null;
   up_best_ask: number | null;
   up_spread: number | null;
@@ -23,7 +35,7 @@ export interface OddsRecord {
   up_ask_depth_99: number | null;
   up_bid_depth_05: number | null;
   up_bid_depth_01: number | null;
-  // Down token (clobTokenIds[1]) order book.
+  // Down token (clobTokenIds[1]) order book
   down_best_bid: number | null;
   down_best_ask: number | null;
   down_spread: number | null;

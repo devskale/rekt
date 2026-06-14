@@ -55,7 +55,8 @@ app.get("/api/overview", async (_req, res) => {
   try {
     const [spot, latest] = await Promise.all([
       q(`SELECT price, ts FROM spot_ticks WHERE asset='btc' ORDER BY ts DESC LIMIT 1`, []),
-      q(`SELECT m.slug, m.asset, m.window_end, o.up_price, o.down_price,
+      q(`SELECT m.slug, m.asset, m.window_end, o.up_mid, o.down_mid,
+                o.up_price AS up_gamma, o.down_price AS down_gamma,
                 (m.window_end - extract(epoch from now())::int) AS seconds_to_close,
                 o.up_ask_depth_95, o.down_ask_depth_95, o.up_best_ask, o.down_best_ask
          FROM odds_ticks o JOIN markets m ON m.id=o.market_id
@@ -93,9 +94,11 @@ app.get("/api/series", async (req, res) => {
       ),
       // odds: latest tick per market per bucket keeps the up/down curves clean.
       // Bucket the tick ts itself (no LATERAL — that cartesian-multiplies).
+      // Reads up_mid/down_mid (book-derived) — NOT up_price (Gamma, near-frozen).
       q(
         `SELECT DISTINCT ON (m.slug, b) b AS ts, m.slug,
-                o.up_price, o.down_price,
+                o.up_mid, o.down_mid,
+                o.up_price AS up_gamma, o.down_price AS down_gamma,
                 o.seconds_to_close,
                 o.up_ask_depth_95, o.down_ask_depth_95
          FROM odds_ticks o
@@ -305,7 +308,7 @@ function renderRange(){
   } else f.textContent='—';
   if(lastSeries && lastSeries.odds.length){
     const t=focusMs()/1000; const near=[...lastSeries.odds].sort((a,b)=>Math.abs(a.ts/1000-t)-Math.abs(b.ts/1000-t))[0];
-    o.textContent=near?(near.up_price*100).toFixed(0)+'% / '+(near.down_price*100).toFixed(0)+'%':'—';
+    o.textContent=near?(near.up_mid!=null?(near.up_mid*100).toFixed(0)+'% / '+(near.down_mid*100).toFixed(0)+'%':(near.up_gamma!=null?'~'+(near.up_gamma*100).toFixed(0)+'% (gamma)':'—')):'—';
   } else o.textContent='—';
 }
 
@@ -327,8 +330,8 @@ async function loadSeries(){
       const busiest=Object.entries(byM).sort((a,b)=>b[1].length-a[1].length).slice(0,1).map(e=>e[1]).flat()
         .sort((a,b)=>a.ts-b.ts);
       oddsC.data.labels=busiest.map(r=>r.ts/1000);
-      oddsC.data.datasets[0].data=busiest.map(r=>r.up_price*100);
-      oddsC.data.datasets[1].data=busiest.map(r=>r.down_price*100);
+      oddsC.data.datasets[0].data=busiest.map(r=>(r.up_mid!=null?r.up_mid:r.up_gamma)*100);
+      oddsC.data.datasets[1].data=busiest.map(r=>(r.down_mid!=null?r.down_mid:r.down_gamma)*100);
     } else { oddsC.data.labels=[]; oddsC.data.datasets.forEach(ds=>ds.data=[]); }
     oddsC.update('none');
   }catch(e){console.error(e);}
@@ -338,8 +341,8 @@ async function loadOverview(){
     const r=await fetch('api/overview'); const o=await r.json();
     if(o.spot){latestSpotPrice=+o.spot.price; $('spotPrice').textContent=fmt$(latestSpotPrice);}
     if(o.latestMarket){const m=o.latestMarket;
-      $('upPrice').textContent=m.up_price!=null?(m.up_price*100).toFixed(1)+'%':'—';
-      $('dnPrice').textContent=m.down_price!=null?(m.down_price*100).toFixed(1)+'%':'—';
+      $('upPrice').textContent=m.up_mid!=null?(m.up_mid*100).toFixed(1)+'%':(m.up_gamma!=null?'~'+(m.up_gamma*100).toFixed(0)+'%*':'—');
+      $('dnPrice').textContent=m.down_mid!=null?(m.down_mid*100).toFixed(1)+'%':(m.down_gamma!=null?'~'+(m.down_gamma*100).toFixed(0)+'%*':'—');
       $('mktInfo').innerHTML='window ends <b>'+(m.seconds_to_close>0?fmtTime(Date.now()+m.seconds_to_close*1000):'—')+'</b>';
     }
     $('cSpot').textContent=Number(SPAN.spot).toLocaleString();

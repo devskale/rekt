@@ -98,6 +98,14 @@ export class OddsPoller {
       down.tokenId ? fetchDepth(down.tokenId) : Promise.resolve<DepthSummary | null>(null),
     ]);
 
+    // Book mid = canonical price. Gamma outcomePrices (up.price) is metadata
+    // only — near-frozen ~0.499 across a window. mid = (bid+ask)/2 is the
+    // real traded price and what moves 20-33 points over a window's life.
+    const upMid = upDepth && upDepth.bestBid != null && upDepth.bestAsk != null
+      ? (upDepth.bestBid + upDepth.bestAsk) / 2 : null;
+    const downMid = downDepth && downDepth.bestBid != null && downDepth.bestAsk != null
+      ? (downDepth.bestBid + downDepth.bestAsk) / 2 : null;
+
     return {
       ts: Date.now(),
       market_id: market.id,
@@ -106,8 +114,12 @@ export class OddsPoller {
       window_start: windowStart,
       window_end: windowEnd,
       seconds_to_close: secondsToClose,
+      // Gamma (metadata, near-frozen)
       up_price: up.price,
       down_price: down.price,
+      // Book-derived canonical price
+      up_mid: upMid,
+      down_mid: downMid,
       up_best_bid: upDepth?.bestBid ?? null,
       up_best_ask: upDepth?.bestAsk ?? null,
       up_spread: upDepth?.spread ?? null,
